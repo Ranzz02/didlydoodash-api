@@ -1,4 +1,4 @@
-module DidlyDoodash-api
+module github.com/Stenoliv/didlydoodash_api
 
 go 1.22.1
 
