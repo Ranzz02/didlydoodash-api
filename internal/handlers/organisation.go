@@ -13,7 +13,7 @@ import (
 )
 
 func GetOrganisations(c *gin.Context) {
-	orgs, err := daos.GetAllOrgs()
+	orgs, err := daos.GetAllOrgs(*models.CurrentUser)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, utils.ServerError)
 		return
@@ -23,8 +23,9 @@ func GetOrganisations(c *gin.Context) {
 }
 
 type OrganisationInput struct {
-	Name    string                    `json:"name" binding:"required"`
-	Members []OrganisationMemberInput `json:"members"`
+	Name        string                    `json:"name" binding:"required"`
+	Description *string                   `json:"description"`
+	Members     []OrganisationMemberInput `json:"members"`
 }
 
 type OrganisationMemberInput struct {
@@ -44,7 +45,9 @@ func CreateOrganisation(c *gin.Context) {
 
 	// Create Organisation object
 	org := &models.Organisation{
-		Name: input.Name,
+		Name:        input.Name,
+		Description: input.Description,
+		OwnerID:     *models.CurrentUser,
 	}
 
 	// Save organisation object to database
@@ -54,10 +57,11 @@ func CreateOrganisation(c *gin.Context) {
 		return
 	}
 
-	var owner *models.OrganisationMember
-
 	// Create organisation members
 	for _, member := range input.Members {
+		if member.User.ID == *models.CurrentUser {
+			continue
+		}
 
 		organisationMember := &models.OrganisationMember{
 			OrganisationID: org.ID,
@@ -66,27 +70,18 @@ func CreateOrganisation(c *gin.Context) {
 			Role:           datatypes.ToOrganisationRole(member.Role),
 		}
 
-		if datatypes.CEO == datatypes.ToOrganisationRole(member.Role) {
-			if owner == nil {
-				owner = organisationMember
-			} else {
-				tx.Rollback()
-				c.JSON(http.StatusBadRequest, utils.InvalidInput)
-				return
-			}
-		}
-
 		if err := organisationMember.SaveMember(tx); err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, utils.FailedToCreateOrg)
 			return
 		}
 
+		// Add member to response
 		org.Members = append(org.Members, *organisationMember)
 	}
 
 	// Set owner of organisation
-	org.Owner = *owner
+	org.OwnerID = *models.CurrentUser
 
 	// Try to commit to database
 	if err := tx.Commit().Error; err != nil {
@@ -130,7 +125,7 @@ func DeleteOrganisation(c *gin.Context) {
 	}
 
 	// Check if user is owner
-	if org.Owner.User.ID != user.ID {
+	if org.Owner.ID != user.ID {
 		c.JSON(http.StatusBadRequest, utils.InvalidInput)
 		return
 	}
@@ -212,7 +207,7 @@ func UpdateOrganisationMember(c *gin.Context) {
 		return
 	}
 
-	if org.Owner.UserID != *models.CurrentUser {
+	if org.Owner.ID != *models.CurrentUser {
 		c.AbortWithStatusJSON(http.StatusForbidden, utils.NotEnoughAuthority)
 		return
 	}
@@ -258,7 +253,7 @@ func DeleteOrganisationMember(c *gin.Context) {
 	}
 
 	// Check that current user is owner of organisation
-	if org.Owner.User.ID != *models.CurrentUser {
+	if org.Owner.ID != *models.CurrentUser {
 		fmt.Println(org.Owner)
 		c.AbortWithStatusJSON(http.StatusForbidden, utils.NotEnoughAuthority)
 		return

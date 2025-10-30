@@ -12,11 +12,17 @@ func OrganisationListData(db *gorm.DB) *gorm.DB {
 }
 
 // Get all organisations
-func GetAllOrgs() (orgs []models.Organisation, err error) {
-	if err := db.DB.Model(&models.Organisation{}).
-		Joins("JOIN organisation_members ON organisation_members.organisation_id = organisations.id").
-		Where("organisation_members.user_id = ?", models.CurrentUser).
-		Find(&orgs).Error; err != nil {
+func GetAllOrgs(userID string) ([]models.Organisation, error) {
+	var orgs []models.Organisation
+
+	err := db.DB.Model(&models.Organisation{}).
+		Select("organisations.*").
+		Joins("LEFT JOIN organisation_members ON organisation_members.organisation_id = organisations.id").
+		Where("organisation_members.user_id = ? OR organisations.owner_id = ?", userID, userID).
+		Distinct("organisations.id").
+		Find(&orgs).Error
+
+	if err != nil {
 		return nil, err
 	}
 	return orgs, nil

@@ -13,8 +13,8 @@ RUN go mod download
 COPY . .
 
 # Build the Go binaries for the migrate and api commands
-RUN CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-migrate ./src/cmd/migrate && \
-    CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-api ./src/cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-migrate ./cmd/migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-api ./cmd/api
 
 # Stage 2: Create a lightweight image using Alpine Linux
 FROM alpine:latest
