@@ -1,209 +1,111 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
-	"time"
 
-	"github.com/Stenoliv/didlydoodash_api/internal/db"
-	"github.com/Stenoliv/didlydoodash_api/internal/db/daos"
-	"github.com/Stenoliv/didlydoodash_api/internal/db/models"
+	"github.com/Stenoliv/didlydoodash_api/internal/config"
+	"github.com/Stenoliv/didlydoodash_api/internal/dto"
+	"github.com/Stenoliv/didlydoodash_api/internal/services"
+	"github.com/Stenoliv/didlydoodash_api/pkg/logging"
 	"github.com/Stenoliv/didlydoodash_api/pkg/utils"
-	"github.com/Stenoliv/didlydoodash_api/pkg/utils/jwt"
 	"github.com/gin-gonic/gin"
 )
 
-/**
- * Signin Function
- */
-type SigninInput struct {
-	Email      string `json:"email" binding:"required,email"`
-	Password   string `json:"password" binding:"required"`
-	RememberMe bool   `json:"rememberMe" default:"false"`
+type AuthHandler struct {
+	service *services.AuthService
+	cfg     *config.EnvConfig
 }
 
-func Signin(c *gin.Context) {
-	var input SigninInput
-	tx := db.DB.Begin()
-	defer tx.Rollback()
-	// Bind request body
-	err := c.BindJSON(&input)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
+func NewAuthHandler(service *services.AuthService, cfg *config.EnvConfig) *AuthHandler {
+	return &AuthHandler{
+		service: service,
+		cfg:     cfg,
 	}
-	// Try to get user from database
-	user, err := daos.GetUser(input.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.InvalidInput)
-		return
-	}
-	// Validate input.Password with found user password
-	ok := user.Validatepassword(input.Password)
-	if !ok {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-	// Generate tokens
-	access, err := jwt.GenerateAccessToken(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-	// implement rememberMe
-	refresh, err := jwt.GenerateRefreshToken(user.ID, input.RememberMe, tx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-	// Commit transaction if all operations are successful
-	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	tokens := &utils.Tokens{
-		Access:  &access,
-		Refresh: &refresh,
-	}
-	// Send final response
-	c.JSON(http.StatusOK, gin.H{"user": user, "tokens": tokens})
 }
 
-/**
- * Signup Function
- */
-type SignupInput struct {
-	Username string `json:"username" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+func (h *AuthHandler) Routes(router *gin.RouterGroup) {
+	auth := router.Group("/auth")
+
+	auth.POST("/signin", h.SignIn)
+	auth.POST("/signup", h.SignUp)
+	auth.POST("/refresh", h.Refresh)
 }
 
-func Signup(c *gin.Context) {
-	var input SignupInput
-	tx := db.DB.Begin()
-	defer tx.Rollback()
-	// Bind request body
-	err := c.BindJSON(&input)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
+func (h *AuthHandler) SignIn(c *gin.Context) {
+	var body dto.SignInRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
 		return
-	}
-	// Create new user object
-	user := &models.User{Username: input.Username, Email: input.Email, Password: input.Password}
-	// Try to save new user to database
-	err = user.SaveUser(tx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-	// Generate tokens
-	access, err := jwt.GenerateAccessToken(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-	// implement rememberMe
-	refresh, err := jwt.GenerateRefreshToken(user.ID, false, tx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-	tokens := &utils.Tokens{
-		Access:  &access,
-		Refresh: &refresh,
 	}
 
-	// Commit and send final response
-	tx.Commit()
-	c.JSON(http.StatusOK, gin.H{"user": user, "tokens": tokens})
+	// SignIn in service layer
+	user, tokens, err := h.service.SignIn(c.Request.Context(), body)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	// Response
+	c.JSON(http.StatusOK, dto.AuthResponse{
+		User: dto.UserResponse{
+			ID:       user.ID,
+			Username: user.Email,
+			Email:    user.Email,
+		},
+		Tokens: *tokens,
+	})
 }
 
-// Signout function
-func Signout(c *gin.Context) {
-	c.JSON(http.StatusOK, nil)
+func (h *AuthHandler) SignUp(c *gin.Context) {
+	var body dto.SignUpRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
+		return
+	}
+
+	// SignUp in service layer
+	user, tokens, err := h.service.SignUp(c.Request.Context(), body)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	// Response
+	c.JSON(http.StatusCreated, dto.AuthResponse{
+		User: dto.UserResponse{
+			ID:       user.ID,
+			Username: user.Username,
+			Email:    user.Email,
+		},
+		Tokens: *tokens,
+	})
 }
 
-// Refresh function
-func Refresh(c *gin.Context) {
-	unauthorizedResponse := func() {
-		c.JSON(http.StatusUnauthorized, utils.AuthenticationError)
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := logging.WithLayer(ctx, "handler")
+
+	logger.Info("extracting token from context")
+	token := utils.ExtractToken(c)
+	if token == "" {
+		logger.Warn("refresh token not found in request")
+		c.Error(utils.NewError(http.StatusUnauthorized, "no token provided", errors.New("no token provided in request")))
+		return
 	}
 
-	// Extract token from request without validation
-	tokenStr := jwt.ExtractToken(c)
-	token, err := jwt.ParseTokenWithoutValidation(tokenStr) // Parse without validation
+	logger.Debug("sending token to service layer to validate and generate new tokens")
+	tokens, err := h.service.Refresh(ctx, dto.RefreshRequest{
+		Token: token,
+	})
 	if err != nil {
-		utils.LogError(err, "Failed to parse token")
-		unauthorizedResponse()
+		c.Error(err)
 		return
 	}
 
-	claims, err := jwt.ExtractTokenClaims(token)
-	if err != nil {
-		utils.LogError(err, "Failed to extract claims")
-		unauthorizedResponse()
-		return
-	}
-
-	// Extract subject from token
-	sub, err := claims.GetSubject()
-	if err != nil {
-		utils.LogError(err, "Failed to extract subject")
-		unauthorizedResponse()
-		return
-	}
-
-	// Check if it's a refresh token
-	if claims["type"] != "refresh" {
-		utils.LogError(err, "Token not refresh")
-		unauthorizedResponse()
-		return
-	}
-
-	// Check for token in database
-	var session models.UserSession
-	jti, ok := claims["jti"].(string)
-	if !ok {
-		utils.LogError(err, "Failed to retrieve jti")
-		unauthorizedResponse()
-		return
-	}
-
-	if session, err = daos.GetSession(sub, jti); err != nil {
-		utils.LogError(err, "Didn't find a session")
-		unauthorizedResponse()
-		return
-	}
-
-	// Now check if the session is still valid
-	if session.ExpireDate.After(time.Now()) {
-		_, err = jwt.ValidateToken(tokenStr)
-		if err != nil {
-			utils.LogError(err, "Not a valid token")
-			unauthorizedResponse()
-			return
-		}
-
-		// Generate new access token
-		access, err := jwt.GenerateAccessToken(sub)
-		if err != nil {
-			utils.LogError(err, "Failed to generate a access token")
-			unauthorizedResponse()
-			return
-		}
-		tokens := &utils.Tokens{
-			Access:  &access,
-			Refresh: &tokenStr,
-		}
-
-		c.JSON(http.StatusOK, gin.H{"tokens": tokens})
-	} else {
-		// Session has expired in the database
-		if err = db.DB.Delete(&session, "user_id = ? AND jti = ?", sub, jti).Error; err != nil {
-			utils.LogError(err, "Failed to delete old record in database")
-			unauthorizedResponse()
-			return
-		}
-		unauthorizedResponse()
-	}
+	// Respond with new tokens
+	logger.WithField("user_id", tokens.UserID).Info("successfully refreshed user's tokens")
+	c.JSON(http.StatusOK, gin.H{
+		"tokens": tokens,
+	})
 }

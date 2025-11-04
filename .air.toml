@@ -1,0 +1,17 @@
+# .air.toml
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/didlydoodash-api ./cmd/api"
+  bin = "tmp/didlydoodash-api"
+  full_bin = "./tmp/didlydoodash-api"
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  exclude_dir = ["vendor", "tmp"]
+
+  poll = true
+  poll_interval = 500
+
+[log]
+  color = true
+  time = true

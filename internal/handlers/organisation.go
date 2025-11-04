@@ -1,281 +1,108 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/Stenoliv/didlydoodash_api/internal/db"
-	"github.com/Stenoliv/didlydoodash_api/internal/db/daos"
-	"github.com/Stenoliv/didlydoodash_api/internal/db/datatypes"
-	"github.com/Stenoliv/didlydoodash_api/internal/db/models"
+	"github.com/Stenoliv/didlydoodash_api/internal/config"
+	"github.com/Stenoliv/didlydoodash_api/internal/dto"
+	"github.com/Stenoliv/didlydoodash_api/internal/middleware"
+	"github.com/Stenoliv/didlydoodash_api/internal/services"
+	"github.com/Stenoliv/didlydoodash_api/pkg/logging"
 	"github.com/Stenoliv/didlydoodash_api/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
-func GetOrganisations(c *gin.Context) {
-	orgs, err := daos.GetAllOrgs(*models.CurrentUser)
+type OrganisationHandler struct {
+	service *services.OrganisationService
+	cfg     *config.EnvConfig
+}
+
+// Create a new organisation handler
+func NewOrganisationHandler(service *services.OrganisationService, cfg *config.EnvConfig) *OrganisationHandler {
+	return &OrganisationHandler{
+		service: service,
+		cfg:     cfg,
+	}
+}
+
+func (h *OrganisationHandler) Routes(rg *gin.RouterGroup) {
+	org := rg.Group("/organisations")
+	org.Use(middleware.AuthMiddleware(h.cfg))
+
+	org.POST("", h.Create)
+	org.GET("", h.GetAll)
+	org.GET("/:id", h.Get)
+	org.PUT("/:id", h.Update)
+	org.DELETE("/:id", h.Delete)
+}
+
+// POST /organisations
+func (h *OrganisationHandler) Create(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := logging.WithLayer(ctx, "handler")
+
+	userID := utils.GetUserID(c)
+	logger.Infof("user with id: %s is trying to create a organisation", userID)
+
+	var body dto.CreateOrganisationInput
+	if err := c.ShouldBindJSON(&body); err != nil {
+		logger.WithError(err).Warn("failed to bind input params")
+		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
+		return
+	}
+
+	org, err := h.service.Create(ctx, userID, body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
+		logger.WithError(err).Warn("failed to create organisation")
+		c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"organisations": orgs})
+	// Organisation
+	logger.Info("organisation successfully returned")
+	c.JSON(http.StatusCreated, dto.CreateOrganisationResponse{
+		Organisation: *org,
+	})
 }
 
-type OrganisationInput struct {
-	Name        string                    `json:"name" binding:"required"`
-	Description *string                   `json:"description"`
-	Members     []OrganisationMemberInput `json:"members"`
-}
+// GET /organisations
+func (h *OrganisationHandler) GetAll(c *gin.Context) {
+	userID := utils.GetUserID(c)
 
-type OrganisationMemberInput struct {
-	User models.User `json:"user"`
-	Role string      `json:"role"`
-}
+	search := c.Query("search")
+	page := utils.ParseIntDefault(c.Query("page"), 1)
+	limit := utils.ParseIntDefault(c.Query("limit"), 10)
 
-// Create organisation function
-func CreateOrganisation(c *gin.Context) {
-	var input OrganisationInput
-	tx := db.DB.Begin()
-	// Bind request body to input struct
-	if err := c.BindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
+	ownerOnly := utils.ParseBoolDefault(c.Query("ownerOnly"), false)
+
+	offset := (page - 1) * limit
+
+	pagination := services.Pagination{
+		Limit:  int32(limit),
+		Offset: int32(offset),
 	}
 
-	// Create Organisation object
-	org := &models.Organisation{
-		Name:        input.Name,
-		Description: input.Description,
-		OwnerID:     *models.CurrentUser,
-	}
-
-	// Save organisation object to database
-	if err := org.SaveOrganisation(tx); err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, utils.FailedToCreateOrg)
-		return
-	}
-
-	// Create organisation members
-	for _, member := range input.Members {
-		if member.User.ID == *models.CurrentUser {
-			continue
-		}
-
-		organisationMember := &models.OrganisationMember{
-			OrganisationID: org.ID,
-			Organisation:   org,
-			UserID:         member.User.ID,
-			Role:           datatypes.ToOrganisationRole(member.Role),
-		}
-
-		if err := organisationMember.SaveMember(tx); err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, utils.FailedToCreateOrg)
-			return
-		}
-
-		// Add member to response
-		org.Members = append(org.Members, *organisationMember)
-	}
-
-	// Set owner of organisation
-	org.OwnerID = *models.CurrentUser
-
-	// Try to commit to database
-	if err := tx.Commit().Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"organisation": org})
-}
-
-func UpdateOrganisation(c *gin.Context) {
-	c.JSON(http.StatusOK, nil)
-}
-
-type deleteOrganisationInput struct {
-	Name     string `json:"orgName" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-func DeleteOrganisation(c *gin.Context) {
-	id := c.Param("id")
-	var input deleteOrganisationInput
-	if err := c.ShouldBindBodyWithJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	// Check that organisation exists
-	org, err := daos.GetOrg(id)
+	orgs, err := h.service.List(c.Request.Context(), userID, search, pagination, ownerOnly)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
+		c.Error(err)
 		return
 	}
 
-	// Get user from JWT
-	user, err := daos.GetUser(*models.CurrentUser)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	// Check if user is owner
-	if org.Owner.ID != user.ID {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	// Check user password
-	if !user.Validatepassword(input.Password) {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	// Check that input name matches organisation name
-	if org.Name != input.Name {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	// Try to delete organisation from database
-	if err := db.DB.Delete(&org).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"deleted": org})
+	c.JSON(http.StatusOK, dto.GetOrganisationsResponse{
+		Organsations: orgs,
+		Page:         page,
+		Limit:        limit,
+	})
 }
 
-/**
- * Member related enpoints
- */
-func GetOrganisationMembers(c *gin.Context) {
-	id := c.Param("id")
-	members, err := daos.GetMembers(id)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
+func (h *OrganisationHandler) Get(c *gin.Context) {
 
-	c.JSON(http.StatusOK, gin.H{"members": members, "organisationId": id})
 }
 
-func AddOrganisationMember(c *gin.Context) {
-	id := c.Param("id")
-	userId := c.Param("userID")
-	role := datatypes.ToOrganisationRole(c.Query("role"))
-	tx := db.DB.Begin()
+func (h *OrganisationHandler) Update(c *gin.Context) {
 
-	member := &models.OrganisationMember{
-		OrganisationID: id,
-		UserID:         userId,
-		Role:           role,
-	}
-
-	if err := member.SaveMember(tx); err != nil {
-		tx.Rollback()
-		c.AbortWithStatusJSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	tx.Commit()
-	c.JSON(http.StatusOK, gin.H{"member": member})
 }
 
-type updateOrgMemberInput struct {
-	Role *datatypes.OrganisationRole `json:"role"`
-}
+func (h *OrganisationHandler) Delete(c *gin.Context) {
 
-func UpdateOrganisationMember(c *gin.Context) {
-	var input updateOrgMemberInput
-	if err := c.ShouldBindBodyWithJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, utils.InvalidInput)
-		return
-	}
-
-	id := c.Param("id")
-	userID := c.Param("userID")
-
-	org, err := daos.GetOrg(id)
-	if err != nil || org == nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.OrgNotFound)
-		return
-	}
-
-	if org.Owner.ID != *models.CurrentUser {
-		c.AbortWithStatusJSON(http.StatusForbidden, utils.NotEnoughAuthority)
-		return
-	}
-
-	member, err := daos.GetMember(id, userID)
-	if err != nil || member == nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.MemberNotFound)
-		return
-	}
-
-	tx := db.DB.Begin()
-	updates := make(map[string]interface{})
-
-	if input.Role != nil {
-		updates["role"] = &input.Role
-	}
-
-	if len(updates) > 0 {
-		if err := tx.Model(&member).Where("organisation_id = ? AND user_id = ?", member.OrganisationID, member.UserID).Updates(updates).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusBadRequest, utils.InvalidInput)
-			return
-		}
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		c.JSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"updated": member})
-}
-
-func DeleteOrganisationMember(c *gin.Context) {
-	id := c.Param("id")
-	userId := c.Param("userID")
-
-	// Check for organisation
-	org, err := daos.GetOrg(id)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.OrgNotFound)
-		return
-	}
-
-	// Check that current user is owner of organisation
-	if org.Owner.ID != *models.CurrentUser {
-		fmt.Println(org.Owner)
-		c.AbortWithStatusJSON(http.StatusForbidden, utils.NotEnoughAuthority)
-		return
-	}
-
-	// Check for member in organisation
-	member, err := daos.GetMember(id, userId)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.MemberNotFound)
-		return
-	}
-
-	if member == nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, utils.MemberNotFound)
-		return
-	}
-
-	// Try to delete member from organisation
-	if err := db.DB.Delete(&member, "organisation_id = ? AND user_id = ?", member.OrganisationID, member.UserID).Error; err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, utils.ServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"deleted": member})
 }

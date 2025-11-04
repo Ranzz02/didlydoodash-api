@@ -1,37 +1,38 @@
-# Stage 1: Build the Go binaries using the official Golang image
-FROM golang:1.22 AS builder
+# ---------- Stage 1: Build ----------
+FROM golang:1.25.1-alpine AS builder
+
+# Install git (needed for go mod download in private repos)
+RUN apk add --no-cache git
 
 WORKDIR /app
 
-# Copy go.mod and go.sum to install dependencies
+# Copy dependency files first for caching
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source files and certificate
+# Copy source code
 COPY . .
 
-# Build the Go binaries for the migrate and api commands
-RUN CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-migrate ./cmd/migrate && \
-    CGO_ENABLED=0 GOOS=linux go build -v -o ./didlydoodash-api ./cmd/api
+# Build statically linked binaries
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o didlydoodash-api ./cmd/api
 
-# Stage 2: Create a lightweight image using Alpine Linux
-FROM alpine:latest
+# ---------- Stage 2: Runtime ----------
+FROM alpine:3.20
 
-WORKDIR /api
+# Create non-root user
+RUN adduser -D -g '' appuser
 
-# Copy the built binaries and the startup script from the builder stage
-COPY --from=builder /app/didlydoodash-api /app/didlydoodash-migrate /app/start.sh ./
+WORKDIR /app
 
-# Ensure the script has unix line endings
-RUN sed -i 's/\r$//' start.sh
+# Copy binaries only
+COPY --from=builder /app/didlydoodash-api ./
 
-# Give execution permissions to the startup script
-RUN chmod +x start.sh
+# Use non-root user
+USER appuser
 
-# Expose the port the API will run on
+# Expose API port
 EXPOSE 3000
 
-# Set the startup script as the container's entry point
-ENTRYPOINT ["sh","./start.sh"]
+# Start the API binary directly
+ENTRYPOINT ["./didlydoodash-api"]
