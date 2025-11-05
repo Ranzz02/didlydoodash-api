@@ -60,19 +60,34 @@ func main() {
 	txManager := repositories.NewTxManager(pgx)
 	orgRepo := repositories.NewOrganisationRepo(repo, logger)
 	userRepo := repositories.NewUserRepository(repo, logger)
+	roleRepo := repositories.NewRoleRepo(repo, logger)
+	memberRepo := repositories.NewMemberRepo(repo, logger)
 
 	// Services
 	authService := services.NewAuthService(userRepo, txManager, cfg, logger)
-	orgService := services.NewOrganisationService(orgRepo, txManager, logger)
+	orgService := services.NewOrganisationService(services.OrganisationServiceRepos{
+		Org:    orgRepo,
+		Member: memberRepo,
+	}, txManager, logger)
+	membershipService := services.NewMembershipService(services.MembershipRepos{
+		Role:   roleRepo,
+		Member: memberRepo,
+		User:   userRepo,
+	}, txManager, logger)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authService, cfg)
 	orgHandler := handlers.NewOrganisationHandler(orgService, cfg)
+	membershipHandler := handlers.NewMembershipHandler(handlers.MembershipHandlerServices{
+		Member:       membershipService,
+		Organisation: orgService,
+	}, cfg)
 
 	// API routes
 	api := r.Group("/api/v1")
 	authHandler.Routes(api)
 	orgHandler.Routes(api)
+	membershipHandler.Routes(api)
 
 	// Health check
 	api.GET("/health", func(c *gin.Context) {

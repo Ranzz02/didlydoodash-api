@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/Stenoliv/didlydoodash_api/internal/config"
-	"github.com/Stenoliv/didlydoodash_api/pkg/logging"
 	"github.com/Stenoliv/didlydoodash_api/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -36,11 +35,7 @@ func AuthMiddleware(cfg *config.EnvConfig) gin.HandlerFunc {
 
 		// Attach user ID to context
 		c.Set("user_id", sub)
-
-		// Enrich logger with user info for downstream logs
-		logger := logging.GetLogger(c).WithField("user_id", sub)
-		logging.WithLogger(c, logger)
-		c.Request = c.Request.WithContext(logging.WithContextLogger(c.Request.Context(), logger))
+		c.Request = c.Request.WithContext(utils.WithUserID(c.Request.Context(), sub))
 
 		c.Next()
 	}

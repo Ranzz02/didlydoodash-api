@@ -20,6 +20,10 @@ func NewUserRepository(q repository.Querier, logger *logrus.Logger) *UserReposit
 	}
 }
 
+func (r *UserRepository) GetByID(ctx context.Context, userID string) (repository.User, error) {
+	return r.q.GetByID(ctx, userID)
+}
+
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (repository.User, error) {
 	return r.q.GetByEmail(ctx, email)
 }

@@ -104,13 +104,14 @@ type Organisation struct {
 	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
 	Settings    []byte             `json:"settings"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type OrganisationMember struct {
-	ID             int32       `json:"id"`
-	OrganisationID string      `json:"organisation_id"`
-	UserID         string      `json:"user_id"`
-	Role           interface{} `json:"role"`
+	OrganisationID string             `json:"organisation_id"`
+	UserID         string             `json:"user_id"`
+	RoleID         string             `json:"role_id"`
+	JoinedAt       pgtype.Timestamptz `json:"joined_at"`
 }
 
 type Project struct {
@@ -129,6 +130,20 @@ type ProjectMember struct {
 	Role      interface{} `json:"role"`
 }
 
+type Role struct {
+	ID             string      `json:"id"`
+	OrganisationID pgtype.Text `json:"organisation_id"`
+	Name           string      `json:"name"`
+	BaseRoleID     pgtype.Text `json:"base_role_id"`
+	Description    pgtype.Text `json:"description"`
+}
+
+type RolePermission struct {
+	RoleID        string      `json:"role_id"`
+	PermissionKey string      `json:"permission_key"`
+	Allowed       pgtype.Bool `json:"allowed"`
+}
+
 type User struct {
 	ID        string             `json:"id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
@@ -138,14 +153,6 @@ type User struct {
 	Email     string             `json:"email"`
 	Password  string             `json:"password"`
 	Avatar    pgtype.Text        `json:"avatar"`
-}
-
-type UserSession struct {
-	ID         int32              `json:"id"`
-	UserID     string             `json:"user_id"`
-	Jti        string             `json:"jti"`
-	ExpireDate pgtype.Timestamptz `json:"expire_date"`
-	RememberMe bool               `json:"remember_me"`
 }
 
 type WhiteboardRoom struct {

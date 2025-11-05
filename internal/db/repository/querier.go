@@ -6,19 +6,34 @@ package repository
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CountOrganisations(ctx context.Context) (int64, error)
 	CreateOrganisation(ctx context.Context, arg CreateOrganisationParams) (Organisation, error)
+	CreateOrganisationMember(ctx context.Context, arg CreateOrganisationMemberParams) (OrganisationMember, error)
+	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
+	CreateRolePermission(ctx context.Context, arg CreateRolePermissionParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteOrganisation(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (User, error)
+	GetByID(ctx context.Context, id string) (User, error)
+	GetGlobalRoles(ctx context.Context) ([]Role, error)
+	GetMemberByOrg(ctx context.Context, arg GetMemberByOrgParams) (OrganisationMember, error)
 	GetOrganisationByID(ctx context.Context, id string) (Organisation, error)
 	GetOrganisationBySlug(ctx context.Context, slug string) (Organisation, error)
 	GetOrganisationsByOwner(ctx context.Context, arg GetOrganisationsByOwnerParams) ([]Organisation, error)
+	GetPermissionsForRole(ctx context.Context, roleID string) ([]RolePermission, error)
+	GetRoleByID(ctx context.Context, arg GetRoleByIDParams) (Role, error)
+	GetRoleByName(ctx context.Context, arg GetRoleByNameParams) (Role, error)
+	GetRolesForOrg(ctx context.Context, organisationID pgtype.Text) ([]Role, error)
 	GetUserOrganisations(ctx context.Context, arg GetUserOrganisationsParams) ([]Organisation, error)
 	GetUsers(ctx context.Context, arg GetUsersParams) ([]GetUsersRow, error)
+	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
+	IsOrganisationOwner(ctx context.Context, arg IsOrganisationOwnerParams) (bool, error)
+	OrganisationMemberExists(ctx context.Context, arg OrganisationMemberExistsParams) (bool, error)
 	SearchOrganisations(ctx context.Context, arg SearchOrganisationsParams) ([]Organisation, error)
 	UpdateOrganisation(ctx context.Context, arg UpdateOrganisationParams) (Organisation, error)
 }

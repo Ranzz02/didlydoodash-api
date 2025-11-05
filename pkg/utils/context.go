@@ -1,10 +1,15 @@
 package utils
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
+
+type ctxKey string
+
+const userIDKey ctxKey = "user_id"
 
 // Get user_id safely from Gin context
 func GetUserID(c *gin.Context) string {
@@ -13,6 +18,18 @@ func GetUserID(c *gin.Context) string {
 		return ""
 	}
 	return val.(string)
+}
+
+func GetUserIDFromContext(ctx context.Context) string {
+	val := ctx.Value(userIDKey)
+	if id, ok := val.(string); ok {
+		return id
+	}
+	return ""
+}
+
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
 }
 
 // ParseIntDefault safely parses an int with fallback

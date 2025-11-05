@@ -25,7 +25,7 @@ func (q *Queries) CountOrganisations(ctx context.Context) (int64, error) {
 const createOrganisation = `-- name: CreateOrganisation :one
 INSERT INTO organisations (id, name, slug, owner_id)
 VALUES ($1, $2, $3, $4)
-RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at
+RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at
 `
 
 type CreateOrganisationParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) CreateOrganisation(ctx context.Context, arg CreateOrganisation
 		&i.ArchivedAt,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -71,7 +72,7 @@ func (q *Queries) DeleteOrganisation(ctx context.Context, id string) error {
 }
 
 const getOrganisationByID = `-- name: GetOrganisationByID :one
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at FROM organisations WHERE id = $1
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations WHERE id = $1
 `
 
 func (q *Queries) GetOrganisationByID(ctx context.Context, id string) (Organisation, error) {
@@ -91,12 +92,13 @@ func (q *Queries) GetOrganisationByID(ctx context.Context, id string) (Organisat
 		&i.ArchivedAt,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getOrganisationBySlug = `-- name: GetOrganisationBySlug :one
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at FROM organisations WHERE slug = $1
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations WHERE slug = $1
 `
 
 func (q *Queries) GetOrganisationBySlug(ctx context.Context, slug string) (Organisation, error) {
@@ -116,12 +118,13 @@ func (q *Queries) GetOrganisationBySlug(ctx context.Context, slug string) (Organ
 		&i.ArchivedAt,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getOrganisationsByOwner = `-- name: GetOrganisationsByOwner :many
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at FROM organisations
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations
 WHERE owner_id = $1
 ORDER BY created_at DESC
 LIMIT $3
@@ -157,6 +160,7 @@ func (q *Queries) GetOrganisationsByOwner(ctx context.Context, arg GetOrganisati
 			&i.ArchivedAt,
 			&i.Settings,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -169,7 +173,7 @@ func (q *Queries) GetOrganisationsByOwner(ctx context.Context, arg GetOrganisati
 }
 
 const getUserOrganisations = `-- name: GetUserOrganisations :many
-SELECT DISTINCT o.id, o.name, o.slug, o.description, o.owner_id, o.website, o.logo_url, o.location, o.timezone, o.is_active, o.archived_at, o.settings, o.created_at
+SELECT DISTINCT o.id, o.name, o.slug, o.description, o.owner_id, o.website, o.logo_url, o.location, o.timezone, o.is_active, o.archived_at, o.settings, o.created_at, o.updated_at
 FROM organisations o
 LEFT JOIN organisation_members m
   ON m.organisation_id = o.id
@@ -221,6 +225,7 @@ func (q *Queries) GetUserOrganisations(ctx context.Context, arg GetUserOrganisat
 			&i.ArchivedAt,
 			&i.Settings,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -233,7 +238,7 @@ func (q *Queries) GetUserOrganisations(ctx context.Context, arg GetUserOrganisat
 }
 
 const searchOrganisations = `-- name: SearchOrganisations :many
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at FROM organisations
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations
 WHERE (
     $1::text = '' 
     OR name ILIKE '%' || $1::text || '%' 
@@ -272,6 +277,7 @@ func (q *Queries) SearchOrganisations(ctx context.Context, arg SearchOrganisatio
 			&i.ArchivedAt,
 			&i.Settings,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -297,7 +303,7 @@ SET
     archived_at = COALESCE($9, archived_at),
     updated_at  = NOW()
 WHERE id = $10
-RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at
+RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at
 `
 
 type UpdateOrganisationParams struct {
@@ -341,6 +347,7 @@ func (q *Queries) UpdateOrganisation(ctx context.Context, arg UpdateOrganisation
 		&i.ArchivedAt,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
