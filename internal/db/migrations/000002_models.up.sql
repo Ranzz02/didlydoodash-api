@@ -10,19 +10,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'project_role') THEN
         CREATE TYPE project_role AS ENUM ('Admin', 'Edit', 'View');
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'organisation_role') THEN
-        CREATE TYPE organisation_role AS ENUM (
-            'CEO',
-            'Project Manager',
-            'IT Manager',
-            'Senior Software Engineer',
-            'Junior Software Engineer',
-            'IT Support',
-            'HR Manager',
-            'Recruiter',
-            'Not specified'
-        );
-    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'kanban_status') THEN
         CREATE TYPE kanban_status AS ENUM ('Planning', 'In Progress', 'Done', 'Archived');
     END IF;
@@ -45,18 +32,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username ON users(username);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users(deleted_at);
 
--- User sessions (refresh tokens)
-CREATE TABLE IF NOT EXISTS user_sessions (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(21) NOT NULL,
-    jti VARCHAR(21) NOT NULL,
-    expire_date TIMESTAMPTZ NOT NULL,
-    remember_me BOOLEAN NOT NULL DEFAULT false,
-    CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_user_sessions_jti ON user_sessions(jti);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(user_id, jti, expire_date);
-
 -- Projects and members
 CREATE TABLE IF NOT EXISTS projects (
     id VARCHAR(21) PRIMARY KEY,
@@ -77,17 +52,6 @@ CREATE TABLE IF NOT EXISTS project_members (
     CONSTRAINT fk_project_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_project_member_project_user ON project_members(project_id, user_id);
-
--- Organisation members
-CREATE TABLE IF NOT EXISTS organisation_members (
-    id SERIAL PRIMARY KEY,
-    organisation_id VARCHAR(21) NOT NULL,
-    user_id VARCHAR(21) NOT NULL,
-    role organisation_role,
-    CONSTRAINT fk_org_members_organisation FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_org_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_organisation_member_org_user ON organisation_members(organisation_id, user_id);
 
 -- Kanban boards, categories and items
 CREATE TABLE IF NOT EXISTS kanbans (
@@ -196,7 +160,75 @@ CREATE TABLE IF NOT EXISTS line_points (
     id SERIAL PRIMARY KEY,
     point DOUBLE PRECISION NOT NULL,
     line_data_id VARCHAR(21) NOT NULL,
-    CONSTRAINT fk_line_points_line_data FOREIGN KEY (line_data_id) REFERENCES line_data(id) ON UPDATE CASCADE ON DELETE CASCADE
+    CONSTRAINT fk_line_points_line_data 
+        FOREIGN KEY (line_data_id) 
+        REFERENCES line_data(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
 );
+
+-- Organisation roles
+CREATE TABLE IF NOT EXISTS roles (
+    id VARCHAR(21) PRIMARY KEY,
+    organisation_id VARCHAR(21) NULL,
+    name TEXT NOT NULL,
+    base_role_id VARCHAR(21) NULL,
+    description TEXT,
+    UNIQUE (organisation_id, name),
+    CONSTRAINT fk_org_roles_organisation
+        FOREIGN KEY (organisation_id) 
+        REFERENCES organisations(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_org_roles_role 
+        FOREIGN KEY (base_role_id) 
+        REFERENCES roles(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
+);
+
+-- Organisation roles permissions
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id VARCHAR(21) NOT NULL,
+    permission_key TEXT NOT NULL,
+    allowed BOOLEAN DEFAULT TRUE,
+    PRIMARY KEY (role_id, permission_key),
+    CONSTRAINT fk_org_role_permissions_role 
+        FOREIGN KEY (role_id) 
+        REFERENCES roles(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
+);
+
+-- Organisation members
+CREATE TABLE IF NOT EXISTS organisation_members (
+    organisation_id VARCHAR(21) NOT NULL,
+    user_id VARCHAR(21) NOT NULL,
+    role_id VARCHAR(21) NOT NULL,
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY(organisation_id, user_id),
+    CONSTRAINT fk_org_members_organisation 
+        FOREIGN KEY (organisation_id) 
+        REFERENCES organisations(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_org_members_user 
+        FOREIGN KEY (user_id) 
+        REFERENCES users(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_org_members_role 
+        FOREIGN KEY (role_id) 
+        REFERENCES roles(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
+);
+
+-- Index for efficient lookups
+CREATE INDEX IF NOT EXISTS idx_organisation_members_role
+    ON organisation_members(role_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_organisation_member_org_user
+    ON organisation_members(organisation_id, user_id);
 
 -- End of migration

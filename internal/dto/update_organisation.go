@@ -1,6 +1,10 @@
 package dto
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/Stenoliv/didlydoodash_api/internal/db/repository"
+)
 
 type UpdateOrganisationInput struct {
 	Name        *string          `json:"name"`
@@ -11,4 +15,8 @@ type UpdateOrganisationInput struct {
 	Timezone    *string          `json:"timezone"`
 	IsActive    *bool            `json:"isActive"`
 	Settings    *json.RawMessage `json:"settings"`
+}
+
+type UpdateOrganisationResponse struct {
+	Organisation repository.Organisation `json:"organisation"`
 }

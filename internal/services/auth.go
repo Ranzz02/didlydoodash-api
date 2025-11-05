@@ -59,7 +59,7 @@ func (s *AuthService) generateTokens(ctx context.Context, user repository.User, 
 }
 
 func (s *AuthService) SignIn(ctx context.Context, params dto.SignInRequest) (*repository.User, *dto.Tokens, error) {
-	logger := logging.WithLayer(ctx, "service").WithField("user_email", params.Email)
+	logger := logging.WithLayer(ctx, "service", "auth").WithField("user_email", params.Email)
 	logger.Info("attempting sign-in")
 
 	user, err := s.repo.GetByEmail(ctx, params.Email)
@@ -86,7 +86,7 @@ func (s *AuthService) SignIn(ctx context.Context, params dto.SignInRequest) (*re
 }
 
 func (s *AuthService) SignUp(ctx context.Context, params dto.SignUpRequest) (*repository.User, *dto.Tokens, error) {
-	logger := logging.WithLayer(ctx, "service").WithField("new_user", params.Username)
+	logger := logging.WithLayer(ctx, "service", "auth").WithField("new_user", params.Username)
 	logger.Info("attempting sign-up")
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(params.Password), bcrypt.DefaultCost)
@@ -121,7 +121,7 @@ func (s *AuthService) SignUp(ctx context.Context, params dto.SignUpRequest) (*re
 }
 
 func (s *AuthService) Refresh(ctx context.Context, params dto.RefreshRequest) (*dto.Tokens, error) {
-	logger := logging.WithLayer(ctx, "service")
+	logger := logging.WithLayer(ctx, "service", "auth")
 
 	logger.Debug("validating refresh token")
 	claims, err := utils.ValidateToken(s.cfg, params.Token, utils.RefreshToken)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/Stenoliv/didlydoodash_api/internal/db/repository"
@@ -29,9 +30,14 @@ func NewOrganisationService(repo *repositories.OrganisationRepo, tx *repositorie
 	}
 }
 
+// -------------------------------------------------------------
+// Create
+// -------------------------------------------------------------
 func (s *OrganisationService) Create(ctx context.Context, userId string, params dto.CreateOrganisationInput) (*repository.Organisation, error) {
-	var org repository.Organisation
+	logger := logging.WithLayer(ctx, "service", "organisation").WithField("user_id", userId)
+	logger.Infof("creating organisation: %s", params.Name)
 
+	var org repository.Organisation
 	err := s.tx.WithTx(ctx, func(q repository.Querier) error {
 		var err error
 		org, err = q.CreateOrganisation(ctx, repository.CreateOrganisationParams{
@@ -41,22 +47,30 @@ func (s *OrganisationService) Create(ctx context.Context, userId string, params 
 			OwnerID: userId,
 		})
 		if err != nil {
+			logger.WithError(err).Error("failed to create organisation in DB")
 			return err
 		}
-
 		return nil
 	})
-	return &org, err
+
+	if err != nil {
+		logger.WithError(err).Error("organisation creation failed")
+		return nil, utils.NewError(http.StatusInternalServerError, err.Error(), err)
+	}
+
+	logger.WithField("org_id", org.ID).Info("organisation created successfully")
+	return &org, nil
 }
 
-func (s *OrganisationService) Update(
-	ctx context.Context,
-	id, userId string,
-	params dto.UpdateOrganisationInput,
-) (*repository.Organisation, error) {
-	logger := logging.WithLayer(ctx, "service").WithField("org_id", id)
-
-	// TODO: Access logic
+// -------------------------------------------------------------
+// Update
+// -------------------------------------------------------------
+func (s *OrganisationService) Update(ctx context.Context, id, userId string, params dto.UpdateOrganisationInput) (*repository.Organisation, error) {
+	logger := logging.WithLayer(ctx, "service", "organisation").WithFields(logrus.Fields{
+		"org_id":  id,
+		"user_id": userId,
+	})
+	logger.Info("attempting to update organisation")
 
 	args := repository.UpdateOrganisationParams{
 		ID:          id,
@@ -68,61 +82,72 @@ func (s *OrganisationService) Update(
 		IsActive:    utils.ToPgBool(params.IsActive),
 	}
 
-	// Archive handling logic
+	// Handle archive toggle
 	if params.IsActive != nil {
 		if !*params.IsActive {
-			// If inactive → set archived_at = NOW()
-			args.ArchivedAt = pgtype.Timestamptz{
-				Time:  time.Now(),
-				Valid: true,
-			}
+			args.ArchivedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+			logger.Debug("organisation deactivated, setting archived_at timestamp")
 		} else {
-			// If reactivated → clear archived_at
-			args.ArchivedAt = pgtype.Timestamptz{
-				Valid: false,
-			}
+			args.ArchivedAt = pgtype.Timestamptz{Valid: false}
+			logger.Debug("organisation reactivated, clearing archived_at timestamp")
 		}
 	}
 
-	logger.Info("trying to update organisation")
 	org, err := s.repo.Update(ctx, args)
 	if err != nil {
-		return nil, err
+		logger.WithError(err).Error("failed to update organisation")
+		return nil, utils.NewError(http.StatusInternalServerError, err.Error(), err)
 	}
-	return &org, err
+
+	logger.Info("organisation updated successfully")
+	return &org, nil
 }
 
-func (s *OrganisationService) List(
-	ctx context.Context,
-	userId, search string,
-	pagination Pagination,
-	ownerOnly bool,
-) ([]repository.Organisation, error) {
+// -------------------------------------------------------------
+// List
+// -------------------------------------------------------------
+func (s *OrganisationService) List(ctx context.Context, userId, search string, pagination Pagination, ownerOnly bool) ([]repository.Organisation, error) {
+	logger := logging.WithLayer(ctx, "service", "organisation").WithField("user_id", userId)
 	var orgs []repository.Organisation
 
 	if ownerOnly {
-		orgs, err := s.repo.ListOwn(ctx, userId, pagination.Limit, pagination.Offset)
+		logger.Info("fetching organisations owned by user")
+		list, err := s.repo.ListOwn(ctx, userId, pagination.Limit, pagination.Offset)
 		if err != nil {
-			return nil, err
+			logger.WithError(err).Warn("failed to list owned organisations")
+			return nil, utils.NewError(http.StatusInternalServerError, err.Error(), err)
 		}
-
-		// Return owner list
-		return orgs, nil
+		orgs = list
+	} else {
+		logger.Infof("fetching organisations (search='%s')", search)
+		list, err := s.repo.List(ctx, search, pagination.Limit, pagination.Offset)
+		if err != nil {
+			logger.WithError(err).Warn("failed to list organisations")
+			return nil, utils.NewError(http.StatusInternalServerError, err.Error(), err)
+		}
+		orgs = list
 	}
 
-	// Regular list of organisations with search
-	orgs, err := s.repo.List(ctx, search, pagination.Limit, pagination.Offset)
-	if err != nil {
-		return nil, err
-	}
+	logger.Infof("fetched %d organisations", len(orgs))
 	return orgs, nil
 }
 
-func (s *OrganisationService) Get(
-	ctx context.Context,
-) (repository.Organisation, error) {
+// -------------------------------------------------------------
+// Get
+// -------------------------------------------------------------
+func (s *OrganisationService) Get(ctx context.Context, id, userId string) (*repository.Organisation, error) {
+	logger := logging.WithLayer(ctx, "service", "organisation").WithFields(logrus.Fields{
+		"org_id":  id,
+		"user_id": userId,
+	})
+	logger.Info("fetching organisation details")
 
-	var org repository.Organisation
+	org, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		logger.WithError(err).Error("failed to fetch organisation from DB")
+		return nil, utils.NewError(http.StatusInternalServerError, err.Error(), err)
+	}
 
-	return org, nil
+	logger.Info("organisation fetched successfully")
+	return &org, nil
 }

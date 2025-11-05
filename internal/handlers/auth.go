@@ -33,20 +33,28 @@ func (h *AuthHandler) Routes(router *gin.RouterGroup) {
 }
 
 func (h *AuthHandler) SignIn(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := logging.WithLayer(ctx, "handler", "auth")
+
 	var body dto.SignInRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
+		logger.WithError(err).Warn("invalid input")
 		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
 		return
 	}
 
+	logger.WithField("email", body.Email).Info("trying to sign in to user")
+
 	// SignIn in service layer
 	user, tokens, err := h.service.SignIn(c.Request.Context(), body)
 	if err != nil {
+		logger.WithError(err).Warn("failed to sign in user")
 		c.Error(err)
 		return
 	}
 
 	// Response
+	logger.WithField("user_id", user.ID).Info("user successfully signed in")
 	c.JSON(http.StatusOK, dto.AuthResponse{
 		User: dto.UserResponse{
 			ID:       user.ID,
@@ -58,20 +66,28 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 }
 
 func (h *AuthHandler) SignUp(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := logging.WithLayer(ctx, "handler", "auth")
+
 	var body dto.SignUpRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
+		logger.WithError(err).Warn("invalid input")
 		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
 		return
 	}
 
+	logger.WithField("email", body.Email).Infof("trying to sign up user with email: %s", body.Email)
+
 	// SignUp in service layer
 	user, tokens, err := h.service.SignUp(c.Request.Context(), body)
 	if err != nil {
+		logger.WithError(err).Warn("failed to sign up user")
 		c.Error(err)
 		return
 	}
 
 	// Response
+	logger.WithField("user_id", user.ID).Infof("sign up successful")
 	c.JSON(http.StatusCreated, dto.AuthResponse{
 		User: dto.UserResponse{
 			ID:       user.ID,
@@ -84,7 +100,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	ctx := c.Request.Context()
-	logger := logging.WithLayer(ctx, "handler")
+	logger := logging.WithLayer(ctx, "handler", "auth")
 
 	logger.Info("extracting token from context")
 	token := utils.ExtractToken(c)

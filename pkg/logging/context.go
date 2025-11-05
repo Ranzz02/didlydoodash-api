@@ -27,6 +27,9 @@ func FromContext(ctx context.Context) *logrus.Entry {
 }
 
 // WithLayer returns a derived logger from context with an added "layer" field.
-func WithLayer(ctx context.Context, layer string) *logrus.Entry {
-	return FromContext(ctx).WithField("layer", layer)
+func WithLayer(ctx context.Context, layer, component string) *logrus.Entry {
+	return FromContext(ctx).WithFields(logrus.Fields{
+		"layer":     layer,
+		"component": component,
+	})
 }

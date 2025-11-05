@@ -12,11 +12,13 @@ DROP TABLE IF EXISTS chat_rooms CASCADE;
 DROP TABLE IF EXISTS kanban_items CASCADE;
 DROP TABLE IF EXISTS kanban_categories CASCADE;
 DROP TABLE IF EXISTS kanbans CASCADE;
-DROP TABLE IF EXISTS organisation_members CASCADE;
 DROP TABLE IF EXISTS project_members CASCADE;
 DROP TABLE IF EXISTS projects CASCADE;
 DROP TABLE IF EXISTS user_sessions CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
+DROP TABLE IF EXISTS organisation_members CASCADE;
 
 -- Drop enum types (if no longer used)
 DROP TYPE IF EXISTS kanban_item_priority;
