@@ -3,14 +3,12 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/Stenoliv/didlydoodash_api/internal/db/repository"
 	"github.com/Stenoliv/didlydoodash_api/internal/dto"
 	"github.com/Stenoliv/didlydoodash_api/internal/repositories"
 	"github.com/Stenoliv/didlydoodash_api/pkg/logging"
-	"github.com/Stenoliv/didlydoodash_api/pkg/permissions"
 	"github.com/Stenoliv/didlydoodash_api/pkg/utils"
 	"github.com/jackc/pgx/v5"
 	"github.com/sirupsen/logrus"
@@ -43,14 +41,6 @@ func (s *MembershipService) Create(ctx context.Context, params *dto.CreateOrgani
 		"user_id": params.UserID,
 	})
 
-	// Extract acting user from context (set by auth middleware)
-	actorID := utils.GetUserIDFromContext(ctx)
-
-	// Check that the actor has permission to add members
-	if err = s.CheckPermission(ctx, actorID, params.OrgID, permissions.OrgInviteMembers); err != nil {
-		return nil, err
-	}
-
 	logger.Info("attempting to add member to organisation")
 
 	var member repository.OrganisationMember
@@ -68,17 +58,12 @@ func (s *MembershipService) Create(ctx context.Context, params *dto.CreateOrgani
 		// Validate role (role must exist within this org)
 		if params.RoleID == "" {
 			// Fallback to standard member
-			role, err = s.repos.Role.GetByName(ctx, "member", &params.OrgID)
+			role, err = s.repos.Role.GetDefaultRoleForOrg(ctx, params.OrgID)
 			if err != nil {
-				logger.WithError(err).Warn("invalid role provided")
-				return utils.NewError(http.StatusBadRequest, "invalid role", err)
+				logger.WithError(err).Warn("failed to fetch role")
+				return utils.NewError(http.StatusInternalServerError, "failed to fetch organisations default role", err)
 			}
 		} else {
-			// user wants to assign a specific role, check permission
-			if err = s.CheckPermission(ctx, actorID, params.OrgID, "org:assign_role"); err != nil {
-				return utils.NewError(http.StatusInternalServerError, "failed to verify permission", err)
-			}
-
 			role, err = s.repos.Role.GetByID(ctx, params.RoleID, nil)
 			if err != nil {
 				logger.WithError(err).Warn("invalid role provided")
@@ -162,43 +147,4 @@ func (s *MembershipService) GetUserPermissions(ctx context.Context, userID, orgI
 
 	logger.WithField("perm_count", len(perms)).Info("successfully fetched user permissions")
 	return &role, perms, nil
-}
-
-// Helpers
-// Check if user has a specific permission
-func (s *MembershipService) CheckPermission(ctx context.Context, userID, orgID string, perm permissions.Permission) error {
-	// Short-circuit if owner
-	isOwner, err := s.IsOrgOwner(ctx, userID, orgID)
-	if err != nil {
-		s.logger.WithError(err).Error("failed to check organisation ownership")
-		return utils.NewError(http.StatusInternalServerError, "failed to verify organisation ownership", err)
-	}
-	if isOwner {
-		return nil
-	}
-
-	// Check member & permission
-	ok, err := s.repos.Role.HasPermission(ctx, &repository.HasPermissionParams{
-		UserID:         userID,
-		OrganisationID: orgID,
-		PermissionKey:  string(perm),
-	})
-	if err != nil {
-		s.logger.WithError(err).Error("permission check failed due to internal error")
-		return utils.NewError(http.StatusInternalServerError, "failed to verify permission", err)
-	}
-	if !ok {
-		s.logger.WithFields(logrus.Fields{
-			"user_id": userID,
-			"org_id":  orgID,
-			"perm":    perm,
-		}).Warn("permission denied")
-		return utils.NewError(http.StatusForbidden, "insufficient permissions", fmt.Errorf("missing permission: %s", perm))
-	}
-	return nil
-}
-
-// Check if user is the owner of the organisation
-func (s *MembershipService) IsOrgOwner(ctx context.Context, userID, orgID string) (bool, error) {
-	return s.repos.Member.IsOwner(ctx, orgID, userID)
 }

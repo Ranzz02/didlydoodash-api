@@ -25,7 +25,7 @@ func (q *Queries) CountOrganisations(ctx context.Context) (int64, error) {
 const createOrganisation = `-- name: CreateOrganisation :one
 INSERT INTO organisations (id, name, slug, owner_id)
 VALUES ($1, $2, $3, $4)
-RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at
+RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id
 `
 
 type CreateOrganisationParams struct {
@@ -58,6 +58,7 @@ func (q *Queries) CreateOrganisation(ctx context.Context, arg CreateOrganisation
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultRoleID,
 	)
 	return i, err
 }
@@ -72,7 +73,7 @@ func (q *Queries) DeleteOrganisation(ctx context.Context, id string) error {
 }
 
 const getOrganisationByID = `-- name: GetOrganisationByID :one
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations WHERE id = $1
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id FROM organisations WHERE id = $1
 `
 
 func (q *Queries) GetOrganisationByID(ctx context.Context, id string) (Organisation, error) {
@@ -93,12 +94,13 @@ func (q *Queries) GetOrganisationByID(ctx context.Context, id string) (Organisat
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultRoleID,
 	)
 	return i, err
 }
 
 const getOrganisationBySlug = `-- name: GetOrganisationBySlug :one
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations WHERE slug = $1
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id FROM organisations WHERE slug = $1
 `
 
 func (q *Queries) GetOrganisationBySlug(ctx context.Context, slug string) (Organisation, error) {
@@ -119,12 +121,13 @@ func (q *Queries) GetOrganisationBySlug(ctx context.Context, slug string) (Organ
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultRoleID,
 	)
 	return i, err
 }
 
 const getOrganisationsByOwner = `-- name: GetOrganisationsByOwner :many
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id FROM organisations
 WHERE owner_id = $1
 ORDER BY created_at DESC
 LIMIT $3
@@ -161,6 +164,7 @@ func (q *Queries) GetOrganisationsByOwner(ctx context.Context, arg GetOrganisati
 			&i.Settings,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DefaultRoleID,
 		); err != nil {
 			return nil, err
 		}
@@ -173,7 +177,7 @@ func (q *Queries) GetOrganisationsByOwner(ctx context.Context, arg GetOrganisati
 }
 
 const getUserOrganisations = `-- name: GetUserOrganisations :many
-SELECT DISTINCT o.id, o.name, o.slug, o.description, o.owner_id, o.website, o.logo_url, o.location, o.timezone, o.is_active, o.archived_at, o.settings, o.created_at, o.updated_at
+SELECT DISTINCT o.id, o.name, o.slug, o.description, o.owner_id, o.website, o.logo_url, o.location, o.timezone, o.is_active, o.archived_at, o.settings, o.created_at, o.updated_at, o.default_role_id
 FROM organisations o
 LEFT JOIN organisation_members m
   ON m.organisation_id = o.id
@@ -226,6 +230,7 @@ func (q *Queries) GetUserOrganisations(ctx context.Context, arg GetUserOrganisat
 			&i.Settings,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DefaultRoleID,
 		); err != nil {
 			return nil, err
 		}
@@ -238,7 +243,7 @@ func (q *Queries) GetUserOrganisations(ctx context.Context, arg GetUserOrganisat
 }
 
 const searchOrganisations = `-- name: SearchOrganisations :many
-SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at FROM organisations
+SELECT id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id FROM organisations
 WHERE (
     $1::text = '' 
     OR name ILIKE '%' || $1::text || '%' 
@@ -278,6 +283,7 @@ func (q *Queries) SearchOrganisations(ctx context.Context, arg SearchOrganisatio
 			&i.Settings,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DefaultRoleID,
 		); err != nil {
 			return nil, err
 		}
@@ -301,22 +307,24 @@ SET
     timezone    = COALESCE($7, timezone),
     is_active   = COALESCE($8, is_active),
     archived_at = COALESCE($9, archived_at),
+    default_role_id = COALESCE($10, default_role_id),
     updated_at  = NOW()
-WHERE id = $10
-RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at
+WHERE id = $11
+RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id
 `
 
 type UpdateOrganisationParams struct {
-	Name        pgtype.Text        `json:"name"`
-	Slug        pgtype.Text        `json:"slug"`
-	Description pgtype.Text        `json:"description"`
-	Website     pgtype.Text        `json:"website"`
-	LogoUrl     pgtype.Text        `json:"logo_url"`
-	Location    pgtype.Text        `json:"location"`
-	Timezone    pgtype.Text        `json:"timezone"`
-	IsActive    pgtype.Bool        `json:"is_active"`
-	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
-	ID          string             `json:"id"`
+	Name          pgtype.Text        `json:"name"`
+	Slug          pgtype.Text        `json:"slug"`
+	Description   pgtype.Text        `json:"description"`
+	Website       pgtype.Text        `json:"website"`
+	LogoUrl       pgtype.Text        `json:"logo_url"`
+	Location      pgtype.Text        `json:"location"`
+	Timezone      pgtype.Text        `json:"timezone"`
+	IsActive      pgtype.Bool        `json:"is_active"`
+	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
+	DefaultRoleID pgtype.Text        `json:"default_role_id"`
+	ID            string             `json:"id"`
 }
 
 func (q *Queries) UpdateOrganisation(ctx context.Context, arg UpdateOrganisationParams) (Organisation, error) {
@@ -330,6 +338,7 @@ func (q *Queries) UpdateOrganisation(ctx context.Context, arg UpdateOrganisation
 		arg.Timezone,
 		arg.IsActive,
 		arg.ArchivedAt,
+		arg.DefaultRoleID,
 		arg.ID,
 	)
 	var i Organisation
@@ -348,6 +357,42 @@ func (q *Queries) UpdateOrganisation(ctx context.Context, arg UpdateOrganisation
 		&i.Settings,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultRoleID,
+	)
+	return i, err
+}
+
+const updateOrganisationDefaultRole = `-- name: UpdateOrganisationDefaultRole :one
+UPDATE organisations
+SET default_role_id = $2
+WHERE id = $1
+RETURNING id, name, slug, description, owner_id, website, logo_url, location, timezone, is_active, archived_at, settings, created_at, updated_at, default_role_id
+`
+
+type UpdateOrganisationDefaultRoleParams struct {
+	ID            string      `json:"id"`
+	DefaultRoleID pgtype.Text `json:"default_role_id"`
+}
+
+func (q *Queries) UpdateOrganisationDefaultRole(ctx context.Context, arg UpdateOrganisationDefaultRoleParams) (Organisation, error) {
+	row := q.db.QueryRow(ctx, updateOrganisationDefaultRole, arg.ID, arg.DefaultRoleID)
+	var i Organisation
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.Description,
+		&i.OwnerID,
+		&i.Website,
+		&i.LogoUrl,
+		&i.Location,
+		&i.Timezone,
+		&i.IsActive,
+		&i.ArchivedAt,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DefaultRoleID,
 	)
 	return i, err
 }

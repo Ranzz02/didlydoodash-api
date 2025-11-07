@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/Stenoliv/didlydoodash_api/internal/config"
@@ -18,6 +17,7 @@ import (
 type MembershipHandlerServices struct {
 	Member       *services.MembershipService
 	Organisation *services.OrganisationService
+	Checker      *services.Checker
 }
 
 type MembershipHandler struct {
@@ -40,8 +40,8 @@ func (h *MembershipHandler) Routes(router *gin.RouterGroup) {
 	roles := base.Group("")
 
 	// Members
-	membership.GET("", h.GetMembers)
-	membership.POST("", h.CreateMember)
+	membership.GET("", middleware.RequirePermission(h.services.Checker, permissions.OrgViewMembers), h.GetMembers)
+	membership.POST("", middleware.RequirePermission(h.services.Checker, permissions.OrgInviteMembers), h.CreateMember)
 
 	// Roles
 	roles.GET("/permissions", h.EffectivePermissions)
@@ -58,15 +58,6 @@ func (h *MembershipHandler) GetMembers(c *gin.Context) {
 		"user_id": userID,
 	})
 
-	logger.Info("checking that user has permission to view members")
-
-	// Check permission
-	if err := h.CheckPermission(ctx, userID, orgID, permissions.OrgViewMembers); err != nil {
-		logger.WithError(err).Errorf("failed to find permission: %s for user", permissions.OrgViewMembers)
-		c.Error(err)
-		return
-	}
-
 	logger.Info("trying to fetch organisation members")
 	// Try to get members
 	members, err := h.services.Member.List(ctx)
@@ -76,11 +67,32 @@ func (h *MembershipHandler) GetMembers(c *gin.Context) {
 	}
 
 	logger.Infof("fetched %d organisation members", len(members))
-	c.JSON(http.StatusOK, "")
+	c.JSON(http.StatusOK, members)
 }
 
 func (h *MembershipHandler) CreateMember(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := logging.WithLayer(ctx, "handler", "membership")
 
+	var body dto.CreateOrganisationMember
+	if err := c.ShouldBindJSON(&body); err != nil {
+		logger.WithError(err).Warn("invalid input provided")
+		c.Error(utils.NewError(http.StatusBadRequest, "invalid input", err))
+		return
+	}
+
+	logger.Info("trying to create a new organisation member")
+
+	member, err := h.services.Member.Create(ctx, &body)
+	if err != nil {
+		logger.WithError(err).Warn("failed to create organisation member")
+		c.Error(err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.CreateOrganisationMemberResponse{
+		Member: *member,
+	})
 }
 
 // Roles & Permissions
@@ -124,7 +136,4 @@ func (h *MembershipHandler) EffectivePermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, output)
 }
 
-// Helpers
-func (h *MembershipHandler) CheckPermission(ctx context.Context, userID, orgID string, perm permissions.Permission) error {
-	return h.services.Member.CheckPermission(ctx, userID, orgID, permissions.OrgViewMembers)
-}
+// ------------- HELPERS --------------

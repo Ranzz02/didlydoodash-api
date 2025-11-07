@@ -64,10 +64,12 @@ func main() {
 	memberRepo := repositories.NewMemberRepo(repo, logger)
 
 	// Services
+	checkerService := services.NewChecker(memberRepo, roleRepo, logger)
 	authService := services.NewAuthService(userRepo, txManager, cfg, logger)
 	orgService := services.NewOrganisationService(services.OrganisationServiceRepos{
 		Org:    orgRepo,
 		Member: memberRepo,
+		Role:   roleRepo,
 	}, txManager, logger)
 	membershipService := services.NewMembershipService(services.MembershipRepos{
 		Role:   roleRepo,
@@ -77,10 +79,14 @@ func main() {
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authService, cfg)
-	orgHandler := handlers.NewOrganisationHandler(orgService, cfg)
+	orgHandler := handlers.NewOrganisationHandler(handlers.OrganisationHandlerServices{
+		Org:     orgService,
+		Checker: checkerService,
+	}, cfg)
 	membershipHandler := handlers.NewMembershipHandler(handlers.MembershipHandlerServices{
 		Member:       membershipService,
 		Organisation: orgService,
+		Checker:      checkerService,
 	}, cfg)
 
 	// API routes

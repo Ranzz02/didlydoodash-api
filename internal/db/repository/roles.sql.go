@@ -71,6 +71,27 @@ func (q *Queries) CreateRolePermission(ctx context.Context, arg CreateRolePermis
 	return err
 }
 
+const getDefaultRole = `-- name: GetDefaultRole :one
+SELECT r.id, r.organisation_id, r.name, r.base_role_id, r.description
+FROM roles AS r
+JOIN organisations AS o ON o.default_role_id = r.id
+WHERE o.id = $1
+LIMIT 1
+`
+
+func (q *Queries) GetDefaultRole(ctx context.Context, id string) (Role, error) {
+	row := q.db.QueryRow(ctx, getDefaultRole, id)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.OrganisationID,
+		&i.Name,
+		&i.BaseRoleID,
+		&i.Description,
+	)
+	return i, err
+}
+
 const getGlobalRoles = `-- name: GetGlobalRoles :many
 SELECT id, organisation_id, name, base_role_id, description FROM roles
 WHERE organisation_id IS NULL

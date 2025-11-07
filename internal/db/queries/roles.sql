@@ -25,6 +25,13 @@ FROM roles
 WHERE id = $1 AND organisation_id = $2
 LIMIT 1;
 
+-- name: GetDefaultRole :one
+SELECT r.*
+FROM roles AS r
+JOIN organisations AS o ON o.default_role_id = r.id
+WHERE o.id = $1
+LIMIT 1;
+
 -- name: GetPermissionsForRole :many
 SELECT * FROM role_permissions
 WHERE role_id = $1;

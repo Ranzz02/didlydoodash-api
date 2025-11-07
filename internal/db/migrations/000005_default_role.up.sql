@@ -1,0 +1,2 @@
+ALTER TABLE organisations
+ADD COLUMN default_role_id VARCHAR(21) REFERENCES roles(id) ON DELETE SET NULL;

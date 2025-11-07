@@ -41,6 +41,10 @@ func (r *RoleRepo) GetByID(ctx context.Context, roleID string, orgID *string) (r
 	})
 }
 
+func (r *RoleRepo) GetDefaultRoleForOrg(ctx context.Context, orgID string) (repository.Role, error) {
+	return r.q.GetDefaultRole(ctx, orgID)
+}
+
 func (r *RoleRepo) GetByName(ctx context.Context, name string, orgID *string) (repository.Role, error) {
 	return r.q.GetRoleByName(ctx, repository.GetRoleByNameParams{
 		Name:           name,

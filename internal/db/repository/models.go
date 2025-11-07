@@ -91,20 +91,21 @@ type LinePoint struct {
 }
 
 type Organisation struct {
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Slug        string             `json:"slug"`
-	Description pgtype.Text        `json:"description"`
-	OwnerID     string             `json:"owner_id"`
-	Website     pgtype.Text        `json:"website"`
-	LogoUrl     pgtype.Text        `json:"logo_url"`
-	Location    pgtype.Text        `json:"location"`
-	Timezone    pgtype.Text        `json:"timezone"`
-	IsActive    pgtype.Bool        `json:"is_active"`
-	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
-	Settings    []byte             `json:"settings"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Slug          string             `json:"slug"`
+	Description   pgtype.Text        `json:"description"`
+	OwnerID       string             `json:"owner_id"`
+	Website       pgtype.Text        `json:"website"`
+	LogoUrl       pgtype.Text        `json:"logo_url"`
+	Location      pgtype.Text        `json:"location"`
+	Timezone      pgtype.Text        `json:"timezone"`
+	IsActive      pgtype.Bool        `json:"is_active"`
+	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
+	Settings      []byte             `json:"settings"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	DefaultRoleID pgtype.Text        `json:"default_role_id"`
 }
 
 type OrganisationMember struct {

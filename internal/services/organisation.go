@@ -20,6 +20,7 @@ import (
 type OrganisationServiceRepos struct {
 	Org    *repositories.OrganisationRepo
 	Member *repositories.MemberRepo
+	Role   *repositories.RoleRepo
 }
 
 type OrganisationService struct {
@@ -61,11 +62,18 @@ func (s *OrganisationService) Create(ctx context.Context, userID string, params 
 		// Seed default roles
 		logger.Info("seeding default roles")
 
+		const (
+			OwnerRole  string = "owner"
+			AdminRole  string = "admin"
+			MemberRole string = "member"
+			ViewerRole string = "viewer"
+		)
+
 		roles := map[string][]permissions.Permission{
-			"Owner":  permissions.OwnerPermissions,
-			"Admin":  permissions.AdminPermissions,
-			"Member": permissions.MemberPermissions,
-			"Viewer": permissions.ViewerPermissions,
+			OwnerRole:  permissions.OwnerPermissions,
+			AdminRole:  permissions.AdminPermissions,
+			MemberRole: permissions.MemberPermissions,
+			ViewerRole: permissions.ViewerPermissions,
 		}
 
 		// SeedDefault Roles
@@ -75,13 +83,25 @@ func (s *OrganisationService) Create(ctx context.Context, userID string, params 
 			return err
 		}
 
+		// Update organisation default role
+		defaultRoleID := roleIDs["member"]
+		logger.Info("trying to update organisation with the default role")
+		org, err = q.UpdateOrganisationDefaultRole(ctx, repository.UpdateOrganisationDefaultRoleParams{
+			ID:            org.ID,
+			DefaultRoleID: utils.PtrToPgText(&defaultRoleID),
+		})
+		if err != nil {
+			logger.WithError(err).Error("failed to set organisation default role")
+			return err
+		}
+
 		// Add owner membership
 		// 3️⃣ Add owner as organisation member
 		logger.Info("adding organisation owner as member")
 		if _, err := q.CreateOrganisationMember(ctx, repository.CreateOrganisationMemberParams{
 			OrganisationID: orgID,
 			UserID:         userID,
-			RoleID:         roleIDs["Owner"],
+			RoleID:         roleIDs["owner"],
 		}); err != nil {
 			logger.WithError(err).Error("failed to create owner membership")
 			return err
@@ -108,16 +128,20 @@ func (s *OrganisationService) Update(ctx context.Context, id, userId string, par
 		"org_id":  id,
 		"user_id": userId,
 	})
+
+	// Check users permissions
+
 	logger.Info("attempting to update organisation")
 
 	args := repository.UpdateOrganisationParams{
-		ID:          id,
-		Name:        utils.PtrToPgText(params.Name),
-		Description: utils.PtrToPgText(params.Description),
-		Website:     utils.PtrToPgText(params.Website),
-		LogoUrl:     utils.PtrToPgText(params.LogoUrl),
-		Timezone:    utils.PtrToPgText(params.Timezone),
-		IsActive:    utils.PtrToPgBool(params.IsActive),
+		ID:            id,
+		Name:          utils.PtrToPgText(params.Name),
+		Description:   utils.PtrToPgText(params.Description),
+		Website:       utils.PtrToPgText(params.Website),
+		LogoUrl:       utils.PtrToPgText(params.LogoUrl),
+		Timezone:      utils.PtrToPgText(params.Timezone),
+		IsActive:      utils.PtrToPgBool(params.IsActive),
+		DefaultRoleID: utils.PtrToPgText(params.DefaultRoleID),
 	}
 
 	// Handle archive toggle

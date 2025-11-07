@@ -5,3 +5,7 @@ type CreateOrganisationMember struct {
 	OrgID  string `json:"orgId" binding:"required"`
 	RoleID string `json:"roleId"`
 }
+
+type CreateOrganisationMemberResponse struct {
+	Member OrganisationMember `json:"member"`
+}

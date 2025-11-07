@@ -1,4 +1,10 @@
-DB_URL = $(DB_DSN)
+# Load .env if it exists
+ifneq (,$(wildcard .env))
+    include .env
+    export $(shell sed 's/=.*//' .env)
+endif
+
+DB_URL = $(POSTGRES_DSN)
 MIGRATIONS_DIR := internal/db/migrations
 SQLC_CONFIG := internal/db/sqlc.yaml
 

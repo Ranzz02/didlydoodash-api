@@ -47,6 +47,7 @@ var (
 	}
 
 	MemberPermissions = []Permission{
+		OrgViewMembers,
 		ProjectView, ProjectCreate, ProjectEdit,
 		KanbanView, KanbanCreate, KanbanEdit,
 		WhiteboardView, WhiteboardCreate, WhiteboardEdit,

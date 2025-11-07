@@ -9,21 +9,27 @@ import (
 	"github.com/Stenoliv/didlydoodash_api/internal/middleware"
 	"github.com/Stenoliv/didlydoodash_api/internal/services"
 	"github.com/Stenoliv/didlydoodash_api/pkg/logging"
+	"github.com/Stenoliv/didlydoodash_api/pkg/permissions"
 	"github.com/Stenoliv/didlydoodash_api/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
 
+type OrganisationHandlerServices struct {
+	Org     *services.OrganisationService
+	Checker *services.Checker
+}
+
 type OrganisationHandler struct {
-	service *services.OrganisationService
-	cfg     *config.EnvConfig
+	services *OrganisationHandlerServices
+	cfg      *config.EnvConfig
 }
 
 // Create a new organisation handler
-func NewOrganisationHandler(service *services.OrganisationService, cfg *config.EnvConfig) *OrganisationHandler {
+func NewOrganisationHandler(services OrganisationHandlerServices, cfg *config.EnvConfig) *OrganisationHandler {
 	return &OrganisationHandler{
-		service: service,
-		cfg:     cfg,
+		services: &services,
+		cfg:      cfg,
 	}
 }
 
@@ -34,8 +40,8 @@ func (h *OrganisationHandler) Routes(rg *gin.RouterGroup) {
 	org.POST("", h.Create)
 	org.GET("", h.GetAll)
 	org.GET("/:id", h.Get)
-	org.PUT("/:id", h.Update)
-	org.DELETE("/:id", h.Delete)
+	org.PUT("/:id", middleware.RequirePermission(h.services.Checker, permissions.OrgEdit), h.Update)
+	org.DELETE("/:id", middleware.RequirePermission(h.services.Checker, permissions.OrgDelete), h.Delete)
 }
 
 // POST /organisations
@@ -53,7 +59,7 @@ func (h *OrganisationHandler) Create(c *gin.Context) {
 		return
 	}
 
-	org, err := h.service.Create(ctx, userID, body)
+	org, err := h.services.Org.Create(ctx, userID, body)
 	if err != nil {
 		logger.WithError(err).Warn("failed to create organisation")
 		c.Error(err)
@@ -89,7 +95,7 @@ func (h *OrganisationHandler) GetAll(c *gin.Context) {
 
 	logger.Info("trying to fetch organisations")
 
-	orgs, err := h.service.List(c.Request.Context(), userID, search, pagination, ownerOnly)
+	orgs, err := h.services.Org.List(c.Request.Context(), userID, search, pagination, ownerOnly)
 	if err != nil {
 		logger.WithError(err).Warn("failed to get organisations")
 		c.Error(err)
@@ -107,33 +113,24 @@ func (h *OrganisationHandler) GetAll(c *gin.Context) {
 // GET /organisation/{id}
 func (h *OrganisationHandler) Get(c *gin.Context) {
 	ctx := c.Request.Context()
-	logger := logging.WithLayer(ctx, "handler", "organisation")
+	userID := utils.GetUserID(c)
+	orgID := c.Param("id")
+
+	logger := logging.WithLayer(ctx, "handler", "organisation").WithFields(logrus.Fields{
+		"org_id":  orgID,
+		"user_id": userID,
+	})
 
 	// Parse organisation ID from URL
-	orgID := c.Param("id")
 	if orgID == "" {
 		logger.Warn("organisation id not provided in path")
 		c.Error(utils.NewError(http.StatusBadRequest, "organisation id required", errors.New("missing organisation id")))
 		return
 	}
 
-	// Parse userId from request
-	userID := utils.GetUserID(c)
-	if userID == "" {
-		logger.Warn("user id missing in request context")
-		c.Error(utils.NewError(http.StatusUnauthorized, "unauthorized", errors.New("missing user id in context")))
-		return
-	}
-
-	// Set logger context
-	logger = logger.WithFields(logrus.Fields{
-		"org_id":  orgID,
-		"user_id": userID,
-	})
-
 	logger.Info("attempting to fetch organisation")
 
-	organisation, err := h.service.Get(ctx, orgID, userID)
+	organisation, err := h.services.Org.Get(ctx, orgID, userID)
 	if err != nil {
 		logger.WithError(err).Warn("failed to get organisation")
 		c.Error(err)
@@ -176,7 +173,7 @@ func (h *OrganisationHandler) Update(c *gin.Context) {
 
 	logger.Info("attempting to update organisation")
 
-	updated, err := h.service.Update(ctx, orgID, userID, body)
+	updated, err := h.services.Org.Update(ctx, orgID, userID, body)
 	if err != nil {
 		logger.WithError(err).Warn("failed to update organisation")
 		c.Error(err)

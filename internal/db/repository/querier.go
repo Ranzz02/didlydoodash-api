@@ -20,6 +20,7 @@ type Querier interface {
 	DeleteOrganisation(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id string) (User, error)
+	GetDefaultRole(ctx context.Context, id string) (Role, error)
 	GetGlobalRoles(ctx context.Context) ([]Role, error)
 	GetMemberByOrg(ctx context.Context, arg GetMemberByOrgParams) (OrganisationMember, error)
 	GetOrganisationByID(ctx context.Context, id string) (Organisation, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	OrganisationMemberExists(ctx context.Context, arg OrganisationMemberExistsParams) (bool, error)
 	SearchOrganisations(ctx context.Context, arg SearchOrganisationsParams) ([]Organisation, error)
 	UpdateOrganisation(ctx context.Context, arg UpdateOrganisationParams) (Organisation, error)
+	UpdateOrganisationDefaultRole(ctx context.Context, arg UpdateOrganisationDefaultRoleParams) (Organisation, error)
 }
 
 var _ Querier = (*Queries)(nil)

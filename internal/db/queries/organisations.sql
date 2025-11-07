@@ -58,8 +58,15 @@ SET
     timezone    = COALESCE(sqlc.narg('timezone'), timezone),
     is_active   = COALESCE(sqlc.narg('is_active'), is_active),
     archived_at = COALESCE(sqlc.narg('archived_at'), archived_at),
+    default_role_id = COALESCE(sqlc.narg('default_role_id'), default_role_id),
     updated_at  = NOW()
 WHERE id = sqlc.arg(id)
+RETURNING *;
+
+-- name: UpdateOrganisationDefaultRole :one
+UPDATE organisations
+SET default_role_id = $2
+WHERE id = $1
 RETURNING *;
 
 -- name: DeleteOrganisation :exec
